@@ -1,5 +1,13 @@
 # Embodied Agent Bridge
 
+## 分支简介
+
+本分支尝试在虚拟建模软件中，使用类似于世界模型的方法接入智能体，构建具身智能仿真与调试环境。
+
+当前处于方案探索阶段，相关接入、仿真与调试功能待实现和验证。
+
+## 仓库简介
+
 本仓库尝试实现一种将智能体接入具身智能设备的通用方法，探索统一接口、设备适配和可控执行机制，欢迎社区共同参与设计、开发与验证。
 
 An open-source exploration of a general approach to connecting AI agents with embodied devices. Contributions through issues and pull requests are welcome.
