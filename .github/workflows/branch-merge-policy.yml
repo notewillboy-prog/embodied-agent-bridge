@@ -1,0 +1,84 @@
+name: Branch merge policy
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+
+permissions:
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: branch-merge-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check-source-branch:
+    name: Check experimental branch policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Publish merge policy status on the pull request head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.request
+          from pathlib import Path
+
+          event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+          repository = os.environ["GITHUB_REPOSITORY"]
+          api_url = os.environ["GITHUB_API_URL"]
+          headers = {
+              "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+
+          # Read current metadata so an older event cannot evaluate stale PR data.
+          request = urllib.request.Request(
+              f"{api_url}/repos/{repository}/pulls/{event['number']}",
+              headers=headers,
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              pull_request = json.load(response)
+
+          if pull_request["state"] != "open" or pull_request["base"]["ref"] != "main":
+              sys.exit(0)
+
+          source_branch = pull_request["head"]["ref"]
+          blocked = source_branch == "codex/world-model-simulation"
+          reason = (
+              "本分支只是一次尝试，不允许合并到主分支中。"
+              if blocked
+              else "Source branch is permitted to merge into main."
+          )
+          payload = {
+              "state": "failure" if blocked else "success",
+              "context": "branch-merge-policy",
+              "description": reason,
+              "target_url": (
+                  f"{os.environ['GITHUB_SERVER_URL']}/{repository}"
+                  f"/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+              ),
+          }
+          # Evaluate metadata only. PR code is never checked out or executed.
+          request = urllib.request.Request(
+              f"{api_url}/repos/{repository}/statuses/{pull_request['head']['sha']}",
+              data=json.dumps(payload).encode("utf-8"),
+              headers=headers,
+              method="POST",
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              json.load(response)
+
+          summary = f"## Branch merge policy\n\n`{source_branch}` → `main`\n\n{reason}\n"
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(summary, encoding="utf-8")
+          print(reason)
+          sys.exit(1 if blocked else 0)
+          PY
